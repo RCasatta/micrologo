@@ -4,19 +4,17 @@
 #include <string.h>
 #include <malloc.h>
 
-#define _height 80
-#define SIZE 64
+#define SIZE 80
 #define PI 3.14159265
 #define ARCS 19
-#define _width 80
 #define _bitsperpixel 24
 #define _planes 1
 #define _compression 0
-#define _pixelbytesize _height*_width*_bitsperpixel/8
+#define _pixelbytesize SIZE*SIZE*_bitsperpixel/8
 #define _filesize _pixelbytesize+sizeof(bitmap)
 #define _xpixelpermeter 0x130B //2835 , 72 DPI
 #define _ypixelpermeter 0x130B //2835 , 72 DPI
-#define pixel 0x6F
+#define pixel 0xFF
 #pragma pack(push,1)
 
 typedef struct{
@@ -45,13 +43,13 @@ typedef struct {
 #pragma pack(pop)
 
 void set_pixel(uint8_t *pixelbuffer, int x, int y, uint8_t r, uint8_t g, uint8_t b ) {
-	int i=(y*_width+x)*3;
-        pixelbuffer[i]=r;
+	int i=(y*SIZE+x)*3;
+        pixelbuffer[i]=b;
         pixelbuffer[i+1]=g;
-        pixelbuffer[i+2]=b;
+        pixelbuffer[i+2]=r;
 }
 
-int write_bmp() {
+int write_bmp(int m[SIZE][SIZE]) {
     FILE *fp = fopen("test.bmp","wb");
     bitmap *pbitmap  = (bitmap*)calloc(1,sizeof(bitmap));
     uint8_t *pixelbuffer = (uint8_t*)malloc(_pixelbytesize);
@@ -59,8 +57,8 @@ int write_bmp() {
     pbitmap->fileheader.filesize = _filesize;
     pbitmap->fileheader.fileoffset_to_pixelarray = sizeof(bitmap);
     pbitmap->bitmapinfoheader.dibheadersize =sizeof(bitmapinfoheader);
-    pbitmap->bitmapinfoheader.width = _width;
-    pbitmap->bitmapinfoheader.height = _height;
+    pbitmap->bitmapinfoheader.width = SIZE;
+    pbitmap->bitmapinfoheader.height = SIZE;
     pbitmap->bitmapinfoheader.planes = _planes;
     pbitmap->bitmapinfoheader.bitsperpixel = _bitsperpixel;
     pbitmap->bitmapinfoheader.compression = _compression;
@@ -70,7 +68,17 @@ int write_bmp() {
     pbitmap->bitmapinfoheader.numcolorspallette = 0;
     fwrite (pbitmap, 1, sizeof(bitmap),fp);
     memset(pixelbuffer,pixel,_pixelbytesize);
-    set_pixel(pixelbuffer, 3,3,255,255,255);
+    for (int i=0;i<SIZE;i++) {
+        for (int j=0;j<SIZE;j++) {
+             if (m[i][j]==1)
+                 set_pixel(pixelbuffer, i,j,0x32,0xc6,0xf4);
+             else if (m[i][j]==2)
+                 set_pixel(pixelbuffer, i,j,0x87,0xd6,0xf5);
+	     else
+		 set_pixel(pixelbuffer, i,j,255,255,255);
+        }
+    }
+    print_matrix(m);
     fwrite(pixelbuffer,1,_pixelbytesize,fp);
     fclose(fp);
     free(pbitmap);
@@ -84,6 +92,7 @@ struct Arc {
    double start_radiant;
    double end_radiant;
    double inc_radiant;
+   int color;
 };
 
 void print_matrix(int m[SIZE][SIZE]) {
@@ -116,7 +125,7 @@ void draw_circle(int m[SIZE][SIZE], struct Arc *c[ARCS]) {
                         (c[k]->start_radiant < (theta - 2 * PI) && c[k]->end_radiant > (theta - 2 * PI) ) ||
                         (c[k]->start_radiant < (theta + 2 * PI) && c[k]->end_radiant > (theta + 2 * PI) ) )
                    )  {
-                    m[i+half][j+half]=1;
+                    m[i+half][j+half]=c[k]->color;
                 }
             }
         } 
@@ -149,6 +158,15 @@ void print_arc(int i, struct Arc *a) {
     printf("%d start:%.2f end:%.2f min:%.3f max:%.3f\n",i, a->internal_radius, a->external_radius, a->start_radiant, a->end_radiant);
 }
 
+void intern(struct Arc *c1, struct Arc *c2) {
+
+    c1->internal_radius=0.38;
+    c1->external_radius=0.43;
+
+    c2->internal_radius=0.27;
+    c2->external_radius=0.32;
+}
+
 int main()
 {
     int m[SIZE][SIZE];
@@ -163,34 +181,42 @@ int main()
         t->start_radiant=i * carc;
         t->end_radiant=(i+1) * carc - space;
 	t->inc_radiant=0.05;
+	t->color=1;
         c[i]=t;
     }
     for (int i=0;i<ARCS;i++) {
         struct Arc *t = (struct Arc *) malloc(sizeof(struct Arc));
-        t->internal_radius=0.30;
-        t->external_radius=0.37;
+        t->internal_radius=0.34;
+        t->external_radius=0.39;
         t->start_radiant=i * carc;
         t->end_radiant=(i+1) * carc - space;
 	t->inc_radiant=-0.05;
+	t->color=2;
         c[i+ARCS]=t;
     }
-    c[0]->start_radiant=-0.2;
-    c[ARCS]->start_radiant=-0.2;
-    c[1]->internal_radius-=0.07;
-    c[1]->external_radius-=0.05;
+    c[5]->start_radiant-=0.2;
+    c[5+ARCS]->start_radiant-=0.2;
 
-    write_bmp();
+    intern(c[0],c[ARCS]);
+    intern(c[3],c[3+ARCS]);
+    intern(c[6],c[6+ARCS]);
+    intern(c[8],c[8+ARCS]);
+    intern(c[12],c[12+ARCS]);
+    intern(c[14],c[14+ARCS]);
+
+    reset(m);
+    draw_circle(m,c);
+    write_bmp(m);
     while(1) {
         reset(m);
         for (int i=0;i<ARCS*2;i++) {
             inc_rad(c[i]);
         }
-        //inc_rad(c[1],-0.05);
+        printf("\e[1;1H\e[2J");
         draw_circle(m,c);
-        //printf("\e[1;1H\e[2J");
         print_matrix(m);
         usleep(100000);
-   }
+    }
 
     return 0;
 }
